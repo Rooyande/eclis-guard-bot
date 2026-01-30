@@ -11,10 +11,33 @@ from app.states import OwnerStates, AdminStates
 router = Router()
 
 
+# ---------- Helpers ----------
+
+async def _format_user(bot, user_id: int) -> str:
+    """
+    Returns: "123456 | First Last (@username)" or fallback "123456"
+    Note: bot.get_chat(user_id) may fail if bot can't access that user.
+    """
+    try:
+        chat = await bot.get_chat(user_id)
+        name = (chat.full_name or "").strip()
+        username = getattr(chat, "username", None)
+        if username:
+            if name:
+                return f"{user_id} | {name} (@{username})"
+            return f"{user_id} | (@{username})"
+        if name:
+            return f"{user_id} | {name}"
+        return str(user_id)
+    except Exception:
+        return str(user_id)
+
+
 # ---------- START / PANEL ----------
 
 @router.message(F.chat.type == "private", F.text == "/start")
 async def start_private(message: Message):
+    # Owner sees owner panel by default
     if message.from_user.id == OWNER_ID:
         await message.answer("Owner Panel", reply_markup=owner_panel())
         return
@@ -24,6 +47,15 @@ async def start_private(message: Message):
         return
 
     await message.answer("You are not authorized.")
+
+
+# Owner can open admin panel explicitly
+@router.message(F.chat.type == "private", F.text == "/admin")
+async def owner_open_admin_panel(message: Message):
+    if message.from_user.id != OWNER_ID:
+        await message.answer("You are not authorized.")
+        return
+    await message.answer("Admin Panel", reply_markup=admin_panel())
 
 
 # ---------- OWNER: ADD ADMIN ----------
@@ -100,15 +132,6 @@ async def admin_confirm_add_safe(cb: CallbackQuery, state: FSMContext):
 
 # ---------- LISTS (ADMIN + OWNER) ----------
 
-def _chunk_lines(lines: list[str], limit: int = 60) -> list[str]:
-    if not lines:
-        return []
-    out = []
-    for i in range(0, len(lines), limit):
-        out.append("\n".join(lines[i:i + limit]))
-    return out
-
-
 @router.callback_query(IsAdminOrOwner(), F.data.in_({"owner:lists", "admin:lists"}))
 async def show_lists(cb: CallbackQuery):
     safe_ids = await db.list_safe()
@@ -116,33 +139,46 @@ async def show_lists(cb: CallbackQuery):
     bans = await db.list_bans()
     groups = await db.list_groups()
 
-    text = []
-    text.append("📋 Lists\n")
+    lines = []
+    lines.append("📋 Lists\n")
 
-    text.append(f"✅ SAFE users: {len(safe_ids)}")
+    lines.append(f"✅ SAFE users: {len(safe_ids)}")
     if safe_ids:
-        preview = ", ".join(str(x) for x in safe_ids[:30])
-        text.append(f"{preview}{' ...' if len(safe_ids) > 30 else ''}")
-    text.append("")
+        formatted = []
+        for uid in safe_ids[:30]:
+            formatted.append(await _format_user(cb.bot, uid))
+        lines.extend(formatted)
+        if len(safe_ids) > 30:
+            lines.append("...")
 
-    text.append(f"🛡️ Admins: {len(admin_ids)}")
+    lines.append("")
+    lines.append(f"🛡️ Admins: {len(admin_ids)}")
     if admin_ids:
-        preview = ", ".join(str(x) for x in admin_ids[:30])
-        text.append(f"{preview}{' ...' if len(admin_ids) > 30 else ''}")
-    text.append("")
+        formatted = []
+        for uid in admin_ids[:30]:
+            formatted.append(await _format_user(cb.bot, uid))
+        lines.extend(formatted)
+        if len(admin_ids) > 30:
+            lines.append("...")
 
-    text.append(f"⛔ Bans: {len(bans)}")
+    lines.append("")
+    lines.append(f"⛔ Bans: {len(bans)}")
     if bans:
-        preview_pairs = [f"{u}@{g}" for (u, g) in bans[:20]]
-        text.append(", ".join(preview_pairs) + (" ..." if len(bans) > 20 else ""))
-    text.append("")
+        # Keep it compact: "user_id @ group_id"
+        for (u, g) in bans[:30]:
+            lines.append(f"{u} @ {g}")
+        if len(bans) > 30:
+            lines.append("...")
 
-    text.append(f"👥 Groups: {len(groups)}")
+    lines.append("")
+    lines.append(f"👥 Groups: {len(groups)}")
     if groups:
-        preview_groups = [f"{gid} | {title or '-'}" for (gid, title) in groups[:20]]
-        text.append("\n".join(preview_groups) + ("\n..." if len(groups) > 20 else ""))
+        for (gid, title) in groups[:30]:
+            lines.append(f"{gid} | {title or '-'}")
+        if len(groups) > 30:
+            lines.append("...")
 
-    await cb.message.answer("\n".join(text))
+    await cb.message.answer("\n".join(lines))
     await cb.answer()
 
 
