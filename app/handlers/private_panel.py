@@ -129,6 +129,42 @@ async def admin_confirm_add_safe(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
 
+# ---------- REMOVE SAFE USER (ADMIN + OWNER) ----------
+# NOTE: This assumes db.remove_safe(user_id) exists in app/db.py
+
+@router.callback_query(IsAdminOrOwner(), F.data.in_({"admin:remove_safe", "owner:remove_safe"}))
+async def remove_safe_menu(cb: CallbackQuery):
+    safe_ids = await db.list_safe()
+    if not safe_ids:
+        await cb.message.answer("✅ SAFE list is empty.")
+        await cb.answer()
+        return
+
+    builder = InlineKeyboardBuilder()
+    for uid in safe_ids[:30]:
+        builder.button(text=f"Remove {uid}", callback_data=f"do_remove_safe:{uid}")
+
+    builder.button(text="Close", callback_data="cancel")
+    builder.adjust(1)
+
+    await cb.message.answer("Select SAFE user to remove:", reply_markup=builder.as_markup())
+    await cb.answer()
+
+
+@router.callback_query(IsAdminOrOwner(), F.data.startswith("do_remove_safe:"))
+async def do_remove_safe(cb: CallbackQuery):
+    try:
+        _, uid_str = cb.data.split(":")
+        user_id = int(uid_str)
+    except Exception:
+        await cb.answer("Bad data", show_alert=True)
+        return
+
+    await db.remove_safe(user_id)
+    await cb.message.answer(f"❌ Removed from SAFE: {user_id}")
+    await cb.answer()
+
+
 # ---------- UNBAN (ADMIN + OWNER) ----------
 
 @router.callback_query(IsAdminOrOwner(), F.data.in_({"admin:unban", "owner:unban"}))
