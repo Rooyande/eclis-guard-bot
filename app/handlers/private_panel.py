@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.config import OWNER_ID
 from app.db import db
@@ -130,6 +131,43 @@ async def admin_confirm_add_safe(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
 
+# ---------- UNBAN (ADMIN + OWNER) ----------
+
+@router.callback_query(IsAdminOrOwner(), F.data.in_({"admin:unban", "owner:unban"}))
+async def unban_menu(cb: CallbackQuery):
+    bans = await db.list_bans()
+    if not bans:
+        await cb.message.answer("⛔ Ban list is empty.")
+        await cb.answer()
+        return
+
+    # show up to 30 bans as buttons
+    builder = InlineKeyboardBuilder()
+    for (u, g) in bans[:30]:
+        builder.button(text=f"Unban {u} @ {g}", callback_data=f"do_unban:{u}:{g}")
+
+    builder.button(text="Close", callback_data="cancel")
+    builder.adjust(1)
+
+    await cb.message.answer("Select a ban to remove:", reply_markup=builder.as_markup())
+    await cb.answer()
+
+
+@router.callback_query(IsAdminOrOwner(), F.data.startswith("do_unban:"))
+async def do_unban(cb: CallbackQuery):
+    try:
+        _, u_str, g_str = cb.data.split(":")
+        user_id = int(u_str)
+        group_id = int(g_str)
+    except Exception:
+        await cb.answer("Bad data", show_alert=True)
+        return
+
+    await db.remove_ban(user_id, group_id)
+    await cb.message.answer(f"✅ Unbanned {user_id} in group {group_id}.")
+    await cb.answer()
+
+
 # ---------- LISTS (ADMIN + OWNER) ----------
 
 @router.callback_query(IsAdminOrOwner(), F.data.in_({"owner:lists", "admin:lists"}))
@@ -144,27 +182,22 @@ async def show_lists(cb: CallbackQuery):
 
     lines.append(f"✅ SAFE users: {len(safe_ids)}")
     if safe_ids:
-        formatted = []
         for uid in safe_ids[:30]:
-            formatted.append(await _format_user(cb.bot, uid))
-        lines.extend(formatted)
+            lines.append(await _format_user(cb.bot, uid))
         if len(safe_ids) > 30:
             lines.append("...")
 
     lines.append("")
     lines.append(f"🛡️ Admins: {len(admin_ids)}")
     if admin_ids:
-        formatted = []
         for uid in admin_ids[:30]:
-            formatted.append(await _format_user(cb.bot, uid))
-        lines.extend(formatted)
+            lines.append(await _format_user(cb.bot, uid))
         if len(admin_ids) > 30:
             lines.append("...")
 
     lines.append("")
     lines.append(f"⛔ Bans: {len(bans)}")
     if bans:
-        # Keep it compact: "user_id @ group_id"
         for (u, g) in bans[:30]:
             lines.append(f"{u} @ {g}")
         if len(bans) > 30:
