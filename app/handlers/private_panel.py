@@ -38,7 +38,6 @@ async def _format_user(bot, user_id: int) -> str:
 
 @router.message(F.chat.type == "private", F.text == "/start")
 async def start_private(message: Message):
-    # Owner sees owner panel by default
     if message.from_user.id == OWNER_ID:
         await message.answer("Owner Panel", reply_markup=owner_panel())
         return
@@ -50,7 +49,6 @@ async def start_private(message: Message):
     await message.answer("You are not authorized.")
 
 
-# Owner can open admin panel explicitly
 @router.message(F.chat.type == "private", F.text == "/admin")
 async def owner_open_admin_panel(message: Message):
     if message.from_user.id != OWNER_ID:
@@ -141,7 +139,6 @@ async def unban_menu(cb: CallbackQuery):
         await cb.answer()
         return
 
-    # show up to 30 bans as buttons
     builder = InlineKeyboardBuilder()
     for (u, g) in bans[:30]:
         builder.button(text=f"Unban {u} @ {g}", callback_data=f"do_unban:{u}:{g}")
@@ -155,6 +152,7 @@ async def unban_menu(cb: CallbackQuery):
 
 @router.callback_query(IsAdminOrOwner(), F.data.startswith("do_unban:"))
 async def do_unban(cb: CallbackQuery):
+    # 1) parse
     try:
         _, u_str, g_str = cb.data.split(":")
         user_id = int(u_str)
@@ -163,8 +161,43 @@ async def do_unban(cb: CallbackQuery):
         await cb.answer("Bad data", show_alert=True)
         return
 
+    # 2) remove from DB first (so Lists updates even if Telegram API fails)
     await db.remove_ban(user_id, group_id)
-    await cb.message.answer(f"✅ Unbanned {user_id} in group {group_id}.")
+
+    # 3) unban in Telegram group (real unban)
+    unban_ok = False
+    unban_err = None
+    try:
+        await cb.bot.unban_chat_member(chat_id=group_id, user_id=user_id, only_if_banned=True)
+        unban_ok = True
+    except Exception as e:
+        unban_err = str(e)
+
+    # 4) optional: create 1-use invite link so user can rejoin easily
+    link_text = ""
+    link_err = None
+    if unban_ok:
+        try:
+            invite = await cb.bot.create_chat_invite_link(chat_id=group_id, member_limit=1)
+            link_text = invite.invite_link
+        except Exception as e:
+            link_err = str(e)
+
+    # 5) respond
+    if unban_ok:
+        msg = f"✅ Unbanned {user_id} in group {group_id}."
+        if link_text:
+            msg += f"\n\n🔗 One-time invite link:\n{link_text}"
+        elif link_err:
+            msg += f"\n\n⚠️ Unban OK but invite link failed:\n{link_err}"
+        await cb.message.answer(msg)
+    else:
+        await cb.message.answer(
+            f"⚠️ Removed from DB but Telegram unban failed.\n"
+            f"user_id={user_id} group_id={group_id}\n\n"
+            f"Error:\n{unban_err}"
+        )
+
     await cb.answer()
 
 
