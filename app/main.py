@@ -1,3 +1,4 @@
+# app/main.py
 import asyncio
 import logging
 
@@ -7,14 +8,12 @@ from aiogram.enums import ParseMode
 
 from app.config import BOT_TOKEN
 from app.db import db
-
-# routers
 from app.handlers.private_panel import router as private_panel_router
 # اگر handler گروه/کانال جدا داری، اینجا import کن:
 # from app.handlers.group_guard import router as group_guard_router
 
 
-async def main():
+async def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -24,14 +23,14 @@ async def main():
     # 1) init db
     await db.init()
 
-    # 2) init bot + dp
+    # 2) init bot + dispatcher
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
 
-    # 3) include routers
+    # 3) routers
     dp.include_router(private_panel_router)
     # dp.include_router(group_guard_router)
 
@@ -41,6 +40,7 @@ async def main():
         logger.info("ECLIS Guard Bot started")
         await dp.start_polling(bot)
     finally:
+        # aiogram uses aiohttp session internally; close it cleanly
         await bot.session.close()
 
 
