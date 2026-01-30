@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from app.config import BOT_TOKEN
@@ -20,15 +21,19 @@ async def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN is not set")
 
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(
+            parse_mode=ParseMode.HTML
+        )
+    )
+
     dp = Dispatcher()
 
     # Prevent webhook/polling conflict
     await bot.delete_webhook(drop_pending_updates=True)
 
-    # Lazy import so the package exists even before we create handlers
     from app.handlers import include_all_routers
-
     include_all_routers(dp)
 
     logging.getLogger("eclis").info("ECLIS Guard Bot started")
