@@ -6,38 +6,42 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from app.config import BOT_TOKEN
+from app.db import db
+
+# routers
+from app.handlers.private_panel import router as private_panel_router
+# اگر handler گروه/کانال جدا داری، اینجا import کن:
+# from app.handlers.group_guard import router as group_guard_router
 
 
-def setup_logging() -> None:
+async def main():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
+    logger = logging.getLogger("eclis")
 
+    # 1) init db
+    await db.init()
 
-async def main() -> None:
-    setup_logging()
-
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN is not set")
-
+    # 2) init bot + dp
     bot = Bot(
         token=BOT_TOKEN,
-        default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML
-        )
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-
     dp = Dispatcher()
 
-    # Prevent webhook/polling conflict
-    await bot.delete_webhook(drop_pending_updates=True)
+    # 3) include routers
+    dp.include_router(private_panel_router)
+    # dp.include_router(group_guard_router)
 
-    from app.handlers import include_all_routers
-    include_all_routers(dp)
-
-    logging.getLogger("eclis").info("ECLIS Guard Bot started")
-    await dp.start_polling(bot)
+    # 4) start polling
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("ECLIS Guard Bot started")
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":
