@@ -12,6 +12,24 @@ def owner_panel() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="➕ Add Safe User",
+                    callback_data="admin:add_safe"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➖ Remove Safe User",
+                    callback_data="admin:remove_safe"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔓 Unban User",
+                    callback_data="owner:unban"
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="📂 Manage Folders",
                     callback_data="owner:folders"
                 )
@@ -33,6 +51,12 @@ def admin_panel() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="➕ Add Safe User",
                     callback_data="admin:add_safe"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➖ Remove Safe User",
+                    callback_data="admin:remove_safe"
                 )
             ],
             [
